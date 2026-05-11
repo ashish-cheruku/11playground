@@ -175,7 +175,7 @@ export default function VoiceClonePage() {
   const canClone = subscription?.can_use_instant_voice_cloning ?? true;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">Voice Cloning</h1>
         <p className="text-sm text-muted mt-1">

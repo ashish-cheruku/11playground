@@ -55,7 +55,7 @@ export default function SoundEffectsPage() {
   };
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 md:p-8 max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">Sound Effects</h1>
         <p className="text-sm text-muted mt-1">Generate FX from a text prompt. Up to 22 seconds per generation.</p>

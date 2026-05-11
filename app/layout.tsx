@@ -1,11 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { Sidebar } from "@/components/Sidebar";
+import { Shell } from "@/components/Shell";
 import { ApiKeyGate } from "@/components/ApiKeyGate";
 
 export const metadata: Metadata = {
   title: "ElevenLabs Playground",
   description: "Test every ElevenLabs feature with custom inputs and A/B comparison.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 // Inline script — runs synchronously before the page paints to set the
@@ -32,10 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="bg-bg text-text font-sans antialiased">
         <ApiKeyGate>
-          <div className="flex">
-            <Sidebar />
-            <main className="flex-1 min-h-screen">{children}</main>
-          </div>
+          <Shell>{children}</Shell>
         </ApiKeyGate>
       </body>
     </html>

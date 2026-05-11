@@ -66,7 +66,7 @@ export default function VoiceChangerPage() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">Voice Changer (Speech-to-Speech)</h1>
         <p className="text-sm text-muted mt-1">
