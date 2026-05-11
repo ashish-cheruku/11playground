@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────────
+   Theme palettes — :root is light (default), [data-theme="dark"]
+   overrides for dark. Switching themes flips a single attribute on
+   the <html> element. Tailwind colors in tailwind.config.ts read
+   from these CSS variables, so every utility class (bg-bg, text-text,
+   border-border, etc.) tracks the active theme automatically.
+   ───────────────────────────────────────────────────────────────── */
+:root {
+  --color-bg:      #ffffff;
+  --color-panel:   #fafafb;
+  --color-panel2: #f3f4f6;
+  --color-border: #e5e7eb;
+  --color-muted:  #6b7280;
+  --color-text:   #111827;
+  --color-accent: #6d4dff;
+  --color-accent2:#0891b2;
+  --color-success:#15803d;
+  --color-danger: #dc2626;
+  --color-warn:   #d97706;
+
+  --color-scroll-thumb:       #d1d5db;
+  --color-scroll-thumb-hover: #9ca3af;
+  --color-range-track:        #e5e7eb;
+}
+
+[data-theme="dark"] {
+  --color-bg:      #0b0d10;
+  --color-panel:   #13161b;
+  --color-panel2: #1a1e25;
+  --color-border: #262b33;
+  --color-muted:  #8a93a3;
+  --color-text:   #e6eaf2;
+  --color-accent: #7c5cff;
+  --color-accent2:#5cc8ff;
+  --color-success:#3ecf8e;
+  --color-danger: #ff5b6e;
+  --color-warn:   #f0b429;
+
+  --color-scroll-thumb:       #262b33;
+  --color-scroll-thumb-hover: #3a414c;
+  --color-range-track:        #262b33;
+}
+
+html, body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+  /* Smooth crossfade when toggling themes */
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+* { box-sizing: border-box; }
+
+::selection { background: var(--color-accent); color: white; }
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--color-range-track);
+  border-radius: 2px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--color-accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--color-accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-thin::-webkit-scrollbar-track { background: transparent; }
+.scroll-thin::-webkit-scrollbar-thumb { background: var(--color-scroll-thumb); border-radius: 4px; }
+.scroll-thin::-webkit-scrollbar-thumb:hover { background: var(--color-scroll-thumb-hover); }
