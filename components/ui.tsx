@@ -29,7 +29,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return (
     <input
       className={clsx(
-        "w-full px-3 py-2 rounded-md bg-panel2 border border-border text-text text-sm",
+        "w-full px-3 py-2 rounded-md bg-panel2 border border-transparent text-text text-sm",
         "focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent",
         className
       )}
@@ -44,7 +44,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
       <textarea
         ref={ref}
         className={clsx(
-          "w-full px-3 py-2 rounded-md bg-panel2 border border-border text-text text-sm font-mono",
+          "w-full px-3 py-2 rounded-md bg-panel2 border border-transparent text-text text-sm font-mono",
           "focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent resize-y",
           className
         )}
@@ -58,7 +58,7 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
   return (
     <select
       className={clsx(
-        "w-full px-3 py-2 rounded-md bg-panel2 border border-border text-text text-sm",
+        "w-full px-3 py-2 rounded-md bg-panel2 border border-transparent text-text text-sm",
         "focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent",
         className
       )}
@@ -69,7 +69,7 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
 
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={clsx("bg-panel border border-border rounded-lg p-4", className)} {...props} />
+    <div className={clsx("bg-panel rounded-lg p-4", className)} {...props} />
   );
 }
 
@@ -79,13 +79,13 @@ export function Label({ className, children }: { className?: string; children: R
 
 export function Badge({ children, color = "accent" }: { children: React.ReactNode; color?: "accent" | "success" | "warn" | "danger" | "muted" }) {
   const colors = {
-    accent: "bg-accent/10 text-accent border-accent/20",
-    success: "bg-success/10 text-success border-success/20",
-    warn: "bg-warn/10 text-warn border-warn/20",
-    danger: "bg-danger/10 text-danger border-danger/20",
-    muted: "bg-muted/10 text-muted border-muted/20",
+    accent:  "bg-accent/10  text-accent",
+    success: "bg-success/10 text-success",
+    warn:    "bg-warn/10    text-warn",
+    danger:  "bg-danger/10  text-danger",
+    muted:   "bg-panel2     text-muted",
   }[color];
-  return <span className={clsx("inline-block px-2 py-0.5 text-xs rounded border", colors)}>{children}</span>;
+  return <span className={clsx("inline-block px-2 py-0.5 text-[11px] font-medium rounded-md", colors)}>{children}</span>;
 }
 
 export function Slider({
