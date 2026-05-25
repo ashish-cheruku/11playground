@@ -310,7 +310,11 @@ export default function ABTestPage() {
   // ---------------- Dialogue state ----------------
   const [linesA, setLinesA] = useState<DialogueLine[]>([...DEFAULT_DIALOGUE_LINES]);
   const [linesB, setLinesB] = useState<DialogueLine[]>([...DEFAULT_DIALOGUE_LINES]);
-  const [linkedLines, setLinkedLines] = useState(true);
+  // Default UNLINKED in dialogue mode — the typical use case for dialogue A/B
+  // is comparing different line arrangements (e.g. with vs without a trailing
+  // " ..." on the last line). Defaulting to linked silently mirrors edits,
+  // which the user reasonably called out as defeating the purpose.
+  const [linkedLines, setLinkedLines] = useState(false);
   const [dA, setDA] = useState<DialogueSide>(initialDialogue());
   const [dB, setDB] = useState<DialogueSide>(initialDialogue());
 
@@ -580,18 +584,29 @@ export default function ABTestPage() {
       ) : (
         <>
           {/* Dialogue mode top bar */}
-          <Card className="mb-4">
+          <Card className={`mb-4 ${linkedLines ? "border-2 border-accent" : ""}`}>
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="text-xs text-muted">
-                Each side has its own list of lines. Toggle linking to mirror line edits across sides, or unlink to
-                compare different lineups.
+                {linkedLines ? (
+                  <span>
+                    <strong>Lines are mirrored across sides.</strong> Editing A also updates B (and vice versa). Use
+                    this to compare different settings on the same lines. Click the toggle to make sides independent.
+                  </span>
+                ) : (
+                  <span>
+                    <strong>Sides are independent.</strong> Edit A and B separately to compare different line
+                    arrangements. Click the toggle to keep them in sync.
+                  </span>
+                )}
               </div>
               <button
                 type="button"
                 onClick={toggleLinesLink}
-                className="text-xs px-2 py-1 rounded border border-default hover:bg-surface-subtle"
+                className={`text-xs px-3 py-1.5 rounded border ${
+                  linkedLines ? "border-accent bg-surface-subtle font-semibold" : "border-default hover:bg-surface-subtle"
+                }`}
               >
-                {linkedLines ? "🔗 Lines linked — click to unlink" : "⛓️‍💥 Lines unlinked — click to link"}
+                {linkedLines ? "🔗 Linked — click to unlink" : "⛓️‍💥 Independent — click to link"}
               </button>
             </div>
           </Card>
