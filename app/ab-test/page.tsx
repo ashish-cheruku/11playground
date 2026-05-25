@@ -70,183 +70,47 @@ const DEFAULT_DIALOGUE_LINES: DialogueLine[] = [
   { voice_id: "", text: "[hesitant] I almost didn't. [pauses] But here I am." },
 ];
 
-export default function ABTestPage() {
-  const { apiKey, voices } = useStore();
-  const [mode, setMode] = useState<Mode>("tts");
+/* ============================================================
+ * Pure dialogue-line helpers (module-level so they don't
+ * change identity on every render of the page).
+ * ============================================================ */
+const patchLine = (
+  sideLines: DialogueLine[],
+  setSideLines: (n: DialogueLine[]) => void,
+  i: number,
+  patch: Partial<DialogueLine>
+) => {
+  setSideLines(sideLines.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+};
+const addLine = (sideLines: DialogueLine[], setSideLines: (n: DialogueLine[]) => void) => {
+  const last = sideLines[sideLines.length - 1];
+  setSideLines([...sideLines, { voice_id: last?.voice_id || "", text: "" }]);
+};
+const removeLine = (sideLines: DialogueLine[], setSideLines: (n: DialogueLine[]) => void, i: number) => {
+  setSideLines(sideLines.filter((_, idx) => idx !== i));
+};
 
-  // ---------------- TTS state ----------------
-  const [textA, setTextA] = useState(DEFAULT_TEXT);
-  const [textB, setTextB] = useState(DEFAULT_TEXT);
-  const [linkedText, setLinkedText] = useState(true);
-  const [a, setA] = useState<TTSSide>(initialTTS());
-  const [b, setB] = useState<TTSSide>({
-    ...initialTTS(),
-    settings: { stability: 0.30, similarity_boost: 0.75, style: 0.55, use_speaker_boost: true, speed: 1.0 },
-  });
-
-  // ---------------- Dialogue state ----------------
-  const [linesA, setLinesA] = useState<DialogueLine[]>([...DEFAULT_DIALOGUE_LINES]);
-  const [linesB, setLinesB] = useState<DialogueLine[]>([...DEFAULT_DIALOGUE_LINES]);
-  const [linkedLines, setLinkedLines] = useState(true);
-  const [dA, setDA] = useState<DialogueSide>(initialDialogue());
-  const [dB, setDB] = useState<DialogueSide>(initialDialogue());
-
-  // ---------------- TTS handlers ----------------
-  const updateTextA = (next: string) => {
-    setTextA(next);
-    if (linkedText) setTextB(next);
-  };
-  const updateTextB = (next: string) => {
-    setTextB(next);
-    if (linkedText) setTextA(next);
-  };
-  const toggleLink = () => {
-    if (!linkedText) setTextB(textA);
-    setLinkedText((v) => !v);
-  };
-
-  const runOneTTS = async (
-    side: "A" | "B",
-    cfg: TTSSide,
-    set: (c: TTSSide) => void,
-    text: string
-  ): Promise<void> => {
-    if (!cfg.voiceId) {
-      set({ ...cfg, error: "Pick a voice" });
-      return;
-    }
-    set({ ...cfg, loading: true, error: null, audio: null });
-    const t0 = Date.now();
-    try {
-      const blob = await textToSpeech(apiKey, {
-        voiceId: cfg.voiceId,
-        text,
-        modelId: cfg.modelId || undefined,
-        voiceSettings: cfg.settings,
-        outputFormat: cfg.outputFormat,
-        seed: cfg.seed.trim() ? parseInt(cfg.seed.trim()) : undefined,
-      });
-      const v = voices.find((vv) => vv.voice_id === cfg.voiceId);
-      set({ ...cfg, loading: false, audio: blob, elapsed: Date.now() - t0 });
-      await saveHistory({
-        id: genId(),
-        createdAt: Date.now(),
-        kind: "tts",
-        label: `[A/B ${side}] ${text.slice(0, 60)}`,
-        text,
-        voiceId: cfg.voiceId,
-        voiceName: v?.name,
-        modelId: cfg.modelId,
-        settings: cfg.settings,
-        charCount: text.length,
-        audioBlob: blob,
-        audioMime: "audio/mpeg",
-        meta: { abSide: side, linkedText, mode: "tts" },
-      });
-    } catch (e) {
-      set({ ...cfg, loading: false, error: e instanceof Error ? e.message : String(e) });
-    }
-  };
-
-  const runBothTTS = async () => {
-    await Promise.all([runOneTTS("A", a, setA, textA), runOneTTS("B", b, setB, textB)]);
-  };
-
-  // ---------------- Dialogue handlers ----------------
-  const updateLinesA = (next: DialogueLine[]) => {
-    setLinesA(next);
-    if (linkedLines) setLinesB(next.map((l) => ({ ...l })));
-  };
-  const updateLinesB = (next: DialogueLine[]) => {
-    setLinesB(next);
-    if (linkedLines) setLinesA(next.map((l) => ({ ...l })));
-  };
-  const toggleLinesLink = () => {
-    if (!linkedLines) setLinesB(linesA.map((l) => ({ ...l })));
-    setLinkedLines((v) => !v);
-  };
-
-  const patchLine = (
-    sideLines: DialogueLine[],
-    setSideLines: (n: DialogueLine[]) => void,
-    i: number,
-    patch: Partial<DialogueLine>
-  ) => {
-    setSideLines(sideLines.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
-  };
-  const addLine = (sideLines: DialogueLine[], setSideLines: (n: DialogueLine[]) => void) => {
-    const last = sideLines[sideLines.length - 1];
-    setSideLines([...sideLines, { voice_id: last?.voice_id || "", text: "" }]);
-  };
-  const removeLine = (sideLines: DialogueLine[], setSideLines: (n: DialogueLine[]) => void, i: number) => {
-    setSideLines(sideLines.filter((_, idx) => idx !== i));
-  };
-
-  const runOneDialogue = async (
-    side: "A" | "B",
-    cfg: DialogueSide,
-    set: (c: DialogueSide) => void,
-    lines: DialogueLine[]
-  ): Promise<void> => {
-    // If "use same voice" is on, override each line's voice_id with singleVoiceId for the call.
-    const resolved: DialogueLine[] = cfg.useSameVoice
-      ? lines.map((l) => ({ ...l, voice_id: cfg.singleVoiceId }))
-      : lines.map((l) => ({ ...l }));
-    if (resolved.some((l) => !l.voice_id || !l.text.trim())) {
-      set({ ...cfg, error: "Every line needs a voice and text" });
-      return;
-    }
-    set({ ...cfg, loading: true, error: null, audio: null });
-    const t0 = Date.now();
-    try {
-      const blob = await textToDialogue(apiKey, {
-        inputs: resolved,
-        modelId: cfg.modelId || undefined,
-        outputFormat: cfg.outputFormat,
-        seed: cfg.seed.trim() ? parseInt(cfg.seed.trim()) : undefined,
-        settings: cfg.settings,
-      });
-      set({ ...cfg, loading: false, audio: blob, elapsed: Date.now() - t0 });
-      const totalChars = resolved.reduce((s, l) => s + l.text.length, 0);
-      await saveHistory({
-        id: genId(),
-        createdAt: Date.now(),
-        kind: "dialogue",
-        label: `[A/B ${side}] ${resolved.length} lines · ${resolved[0].text.slice(0, 50)}`,
-        modelId: cfg.modelId,
-        settings: cfg.settings,
-        charCount: totalChars,
-        audioBlob: blob,
-        audioMime: "audio/mpeg",
-        meta: { abSide: side, linkedLines, mode: "dialogue", lines: resolved },
-      });
-    } catch (e) {
-      set({ ...cfg, loading: false, error: e instanceof Error ? e.message : String(e) });
-    }
-  };
-
-  const runBothDialogue = async () => {
-    await Promise.all([
-      runOneDialogue("A", dA, setDA, linesA),
-      runOneDialogue("B", dB, setDB, linesB),
-    ]);
-  };
-
-  // ---------------- Sub-components ----------------
-
-  const TTSSideEditor = ({
-    label,
-    cfg,
-    set,
-    color,
-    text,
-  }: {
-    label: string;
-    cfg: TTSSide;
-    set: (c: TTSSide) => void;
-    color: "accent" | "warn";
-    text: string;
-  }) => (
+/* ============================================================
+ * TTSSideEditor — defined at module level so its identity is
+ * stable across page renders (otherwise React unmounts/remounts
+ * every keystroke, dropping focus and losing the typed character).
+ * ============================================================ */
+function TTSSideEditor({
+  label,
+  cfg,
+  set,
+  color,
+  text,
+  onRun,
+}: {
+  label: "A" | "B";
+  cfg: TTSSide;
+  set: (c: TTSSide) => void;
+  color: "accent" | "warn";
+  text: string;
+  onRun: (side: "A" | "B", cfg: TTSSide, set: (c: TTSSide) => void, text: string) => void;
+}) {
+  return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">{label}</h2>
@@ -286,29 +150,36 @@ export default function ABTestPage() {
         <ErrorBox msg={cfg.error} />
         <AudioPlayer blob={cfg.audio} filename={`ab-tts-${label}-${Date.now()}.mp3`} />
         <div className="mt-3">
-          <Button variant="outline" onClick={() => runOneTTS(label as "A" | "B", cfg, set, text)} disabled={cfg.loading}>
+          <Button variant="outline" onClick={() => onRun(label, cfg, set, text)} disabled={cfg.loading}>
             {cfg.loading ? <Spinner size={14} /> : `Run ${label} only`}
           </Button>
         </div>
       </Card>
     </div>
   );
+}
 
-  const DialogueSideEditor = ({
-    label,
-    cfg,
-    set,
-    color,
-    lines,
-    setLines,
-  }: {
-    label: string;
-    cfg: DialogueSide;
-    set: (c: DialogueSide) => void;
-    color: "accent" | "warn";
-    lines: DialogueLine[];
-    setLines: (n: DialogueLine[]) => void;
-  }) => (
+/* ============================================================
+ * DialogueSideEditor — also at module level for stable identity.
+ * ============================================================ */
+function DialogueSideEditor({
+  label,
+  cfg,
+  set,
+  color,
+  lines,
+  setLines,
+  onRun,
+}: {
+  label: "A" | "B";
+  cfg: DialogueSide;
+  set: (c: DialogueSide) => void;
+  color: "accent" | "warn";
+  lines: DialogueLine[];
+  setLines: (n: DialogueLine[]) => void;
+  onRun: (side: "A" | "B", cfg: DialogueSide, set: (c: DialogueSide) => void, lines: DialogueLine[]) => void;
+}) {
+  return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">{label}</h2>
@@ -410,17 +281,163 @@ export default function ABTestPage() {
         <ErrorBox msg={cfg.error} />
         <AudioPlayer blob={cfg.audio} filename={`ab-dialogue-${label}-${Date.now()}.mp3`} />
         <div className="mt-3">
-          <Button
-            variant="outline"
-            onClick={() => runOneDialogue(label as "A" | "B", cfg, set, lines)}
-            disabled={cfg.loading}
-          >
+          <Button variant="outline" onClick={() => onRun(label, cfg, set, lines)} disabled={cfg.loading}>
             {cfg.loading ? <Spinner size={14} /> : `Run ${label} only`}
           </Button>
         </div>
       </Card>
     </div>
   );
+}
+
+/* ============================================================
+ * Main page component.
+ * ============================================================ */
+export default function ABTestPage() {
+  const { apiKey, voices } = useStore();
+  const [mode, setMode] = useState<Mode>("tts");
+
+  // ---------------- TTS state ----------------
+  const [textA, setTextA] = useState(DEFAULT_TEXT);
+  const [textB, setTextB] = useState(DEFAULT_TEXT);
+  const [linkedText, setLinkedText] = useState(true);
+  const [a, setA] = useState<TTSSide>(initialTTS());
+  const [b, setB] = useState<TTSSide>({
+    ...initialTTS(),
+    settings: { stability: 0.30, similarity_boost: 0.75, style: 0.55, use_speaker_boost: true, speed: 1.0 },
+  });
+
+  // ---------------- Dialogue state ----------------
+  const [linesA, setLinesA] = useState<DialogueLine[]>([...DEFAULT_DIALOGUE_LINES]);
+  const [linesB, setLinesB] = useState<DialogueLine[]>([...DEFAULT_DIALOGUE_LINES]);
+  const [linkedLines, setLinkedLines] = useState(true);
+  const [dA, setDA] = useState<DialogueSide>(initialDialogue());
+  const [dB, setDB] = useState<DialogueSide>(initialDialogue());
+
+  // ---------------- TTS handlers ----------------
+  const updateTextA = (next: string) => {
+    setTextA(next);
+    if (linkedText) setTextB(next);
+  };
+  const updateTextB = (next: string) => {
+    setTextB(next);
+    if (linkedText) setTextA(next);
+  };
+  const toggleLink = () => {
+    if (!linkedText) setTextB(textA);
+    setLinkedText((v) => !v);
+  };
+
+  const runOneTTS = async (
+    side: "A" | "B",
+    cfg: TTSSide,
+    set: (c: TTSSide) => void,
+    text: string
+  ): Promise<void> => {
+    if (!cfg.voiceId) {
+      set({ ...cfg, error: "Pick a voice" });
+      return;
+    }
+    set({ ...cfg, loading: true, error: null, audio: null });
+    const t0 = Date.now();
+    try {
+      const blob = await textToSpeech(apiKey, {
+        voiceId: cfg.voiceId,
+        text,
+        modelId: cfg.modelId || undefined,
+        voiceSettings: cfg.settings,
+        outputFormat: cfg.outputFormat,
+        seed: cfg.seed.trim() ? parseInt(cfg.seed.trim()) : undefined,
+      });
+      const v = voices.find((vv) => vv.voice_id === cfg.voiceId);
+      set({ ...cfg, loading: false, audio: blob, elapsed: Date.now() - t0 });
+      await saveHistory({
+        id: genId(),
+        createdAt: Date.now(),
+        kind: "tts",
+        label: `[A/B ${side}] ${text.slice(0, 60)}`,
+        text,
+        voiceId: cfg.voiceId,
+        voiceName: v?.name,
+        modelId: cfg.modelId,
+        settings: cfg.settings,
+        charCount: text.length,
+        audioBlob: blob,
+        audioMime: "audio/mpeg",
+        meta: { abSide: side, linkedText, mode: "tts" },
+      });
+    } catch (e) {
+      set({ ...cfg, loading: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  const runBothTTS = async () => {
+    await Promise.all([runOneTTS("A", a, setA, textA), runOneTTS("B", b, setB, textB)]);
+  };
+
+  // ---------------- Dialogue handlers ----------------
+  const updateLinesA = (next: DialogueLine[]) => {
+    setLinesA(next);
+    if (linkedLines) setLinesB(next.map((l) => ({ ...l })));
+  };
+  const updateLinesB = (next: DialogueLine[]) => {
+    setLinesB(next);
+    if (linkedLines) setLinesA(next.map((l) => ({ ...l })));
+  };
+  const toggleLinesLink = () => {
+    if (!linkedLines) setLinesB(linesA.map((l) => ({ ...l })));
+    setLinkedLines((v) => !v);
+  };
+
+  const runOneDialogue = async (
+    side: "A" | "B",
+    cfg: DialogueSide,
+    set: (c: DialogueSide) => void,
+    lines: DialogueLine[]
+  ): Promise<void> => {
+    // If "use same voice" is on, override each line's voice_id with singleVoiceId for the call.
+    const resolved: DialogueLine[] = cfg.useSameVoice
+      ? lines.map((l) => ({ ...l, voice_id: cfg.singleVoiceId }))
+      : lines.map((l) => ({ ...l }));
+    if (resolved.some((l) => !l.voice_id || !l.text.trim())) {
+      set({ ...cfg, error: "Every line needs a voice and text" });
+      return;
+    }
+    set({ ...cfg, loading: true, error: null, audio: null });
+    const t0 = Date.now();
+    try {
+      const blob = await textToDialogue(apiKey, {
+        inputs: resolved,
+        modelId: cfg.modelId || undefined,
+        outputFormat: cfg.outputFormat,
+        seed: cfg.seed.trim() ? parseInt(cfg.seed.trim()) : undefined,
+        settings: cfg.settings,
+      });
+      set({ ...cfg, loading: false, audio: blob, elapsed: Date.now() - t0 });
+      const totalChars = resolved.reduce((s, l) => s + l.text.length, 0);
+      await saveHistory({
+        id: genId(),
+        createdAt: Date.now(),
+        kind: "dialogue",
+        label: `[A/B ${side}] ${resolved.length} lines · ${resolved[0].text.slice(0, 50)}`,
+        modelId: cfg.modelId,
+        settings: cfg.settings,
+        charCount: totalChars,
+        audioBlob: blob,
+        audioMime: "audio/mpeg",
+        meta: { abSide: side, linkedLines, mode: "dialogue", lines: resolved },
+      });
+    } catch (e) {
+      set({ ...cfg, loading: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  const runBothDialogue = async () => {
+    await Promise.all([
+      runOneDialogue("A", dA, setDA, linesA),
+      runOneDialogue("B", dB, setDB, linesB),
+    ]);
+  };
 
   // ---------------- Render ----------------
 
@@ -556,8 +573,8 @@ export default function ABTestPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <TTSSideEditor label="A" cfg={a} set={setA} color="accent" text={textA} />
-            <TTSSideEditor label="B" cfg={b} set={setB} color="warn" text={textB} />
+            <TTSSideEditor label="A" cfg={a} set={setA} color="accent" text={textA} onRun={runOneTTS} />
+            <TTSSideEditor label="B" cfg={b} set={setB} color="warn" text={textB} onRun={runOneTTS} />
           </div>
         </>
       ) : (
@@ -613,6 +630,7 @@ export default function ABTestPage() {
               color="accent"
               lines={linesA}
               setLines={updateLinesA}
+              onRun={runOneDialogue}
             />
             <DialogueSideEditor
               label="B"
@@ -621,6 +639,7 @@ export default function ABTestPage() {
               color="warn"
               lines={linesB}
               setLines={updateLinesB}
+              onRun={runOneDialogue}
             />
           </div>
         </>
