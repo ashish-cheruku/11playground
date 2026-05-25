@@ -30,8 +30,7 @@ interface TTSSide extends SideCommon {
 }
 
 interface DialogueSide extends SideCommon {
-  lines: DialogueLine[];
-  /** When true, every line uses singleVoiceId and per-line dropdowns hide. */
+  /** When true, every line's voice_id is overridden by singleVoiceId at request time. */
   useSameVoice: boolean;
   singleVoiceId: string;
 }
@@ -57,7 +56,6 @@ const initialDialogue = (): DialogueSide => ({
   elapsed: null,
   error: null,
   loading: false,
-  lines: [{ voice_id: "", text: "" }],
   useSameVoice: true,
   singleVoiceId: "",
 });
@@ -71,8 +69,8 @@ const DEFAULT_DIALOGUE_LINES: DialogueLine[] = [
 ];
 
 /* ============================================================
- * Pure dialogue-line helpers (module-level so they don't
- * change identity on every render of the page).
+ * Pure dialogue-line helpers — defined at module scope so their
+ * identity is stable across renders.
  * ============================================================ */
 const patchLine = (
   sideLines: DialogueLine[],
@@ -91,9 +89,71 @@ const removeLine = (sideLines: DialogueLine[], setSideLines: (n: DialogueLine[])
 };
 
 /* ============================================================
- * TTSSideEditor — defined at module level so its identity is
- * stable across page renders (otherwise React unmounts/remounts
- * every keystroke, dropping focus and losing the typed character).
+ * LinesEditor — renders a list of {voice_id, text} dialogue lines
+ * with add/remove. Per-line voice picker is shown unless
+ * hideVoicePicker is true (when the side uses one voice for all).
+ * ============================================================ */
+function LinesEditor({
+  lines,
+  setLines,
+  hideVoicePicker,
+  titleNote,
+}: {
+  lines: DialogueLine[];
+  setLines: (n: DialogueLine[]) => void;
+  hideVoicePicker: boolean;
+  titleNote?: string;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <Label className="m-0">
+          Lines ({lines.length}){titleNote ? ` · ${titleNote}` : ""}
+        </Label>
+        <div className="text-xs text-muted">
+          {lines.reduce((s, l) => s + l.text.length, 0)} chars total
+        </div>
+      </div>
+      <div className="space-y-2">
+        {lines.map((line, i) => (
+          <div key={i} className="border border-default rounded p-2 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted">Line {i + 1}</span>
+              <button
+                type="button"
+                onClick={() => removeLine(lines, setLines, i)}
+                className="text-xs px-2 py-0.5 rounded border border-default hover:bg-surface-subtle"
+                disabled={lines.length === 1}
+              >
+                Remove
+              </button>
+            </div>
+            {!hideVoicePicker && (
+              <VoiceSelector
+                value={line.voice_id}
+                onChange={(v) => patchLine(lines, setLines, i, { voice_id: v })}
+              />
+            )}
+            <Textarea
+              rows={2}
+              value={line.text}
+              onChange={(e) => patchLine(lines, setLines, i, { text: e.target.value })}
+              placeholder="[whispers] What if it doesn't work?"
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex gap-2">
+        <Button variant="outline" onClick={() => addLine(lines, setLines)}>
+          + Add line
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+ * TTSSideEditor — per-side config card for TTS mode.
  * ============================================================ */
 function TTSSideEditor({
   label,
@@ -160,7 +220,9 @@ function TTSSideEditor({
 }
 
 /* ============================================================
- * DialogueSideEditor — also at module level for stable identity.
+ * DialogueSideEditor — per-side config card for Dialogue mode.
+ * The lines list lives at the top of the page, NOT inside this
+ * card, so this card stays aligned with TTSSideEditor visually.
  * ============================================================ */
 function DialogueSideEditor({
   label,
@@ -168,7 +230,6 @@ function DialogueSideEditor({
   set,
   color,
   lines,
-  setLines,
   onRun,
 }: {
   label: "A" | "B";
@@ -176,7 +237,6 @@ function DialogueSideEditor({
   set: (c: DialogueSide) => void;
   color: "accent" | "warn";
   lines: DialogueLine[];
-  setLines: (n: DialogueLine[]) => void;
   onRun: (side: "A" | "B", cfg: DialogueSide, set: (c: DialogueSide) => void, lines: DialogueLine[]) => void;
 }) {
   return (
@@ -188,30 +248,16 @@ function DialogueSideEditor({
 
       <Card>
         <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <label className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={cfg.useSameVoice}
-                onChange={(e) => {
-                  const next = e.target.checked;
-                  if (next && cfg.singleVoiceId) {
-                    setLines(lines.map((l) => ({ ...l, voice_id: cfg.singleVoiceId })));
-                  }
-                  set({ ...cfg, useSameVoice: next });
-                }}
-              />
-              Use same voice for every line
-            </label>
-          </div>
-          {cfg.useSameVoice ? (
-            <VoiceSelector
-              value={cfg.singleVoiceId}
-              onChange={(v) => {
-                setLines(lines.map((l) => ({ ...l, voice_id: v })));
-                set({ ...cfg, singleVoiceId: v });
-              }}
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={cfg.useSameVoice}
+              onChange={(e) => set({ ...cfg, useSameVoice: e.target.checked })}
             />
+            Use same voice for every line
+          </label>
+          {cfg.useSameVoice ? (
+            <VoiceSelector value={cfg.singleVoiceId} onChange={(v) => set({ ...cfg, singleVoiceId: v })} />
           ) : null}
           <ModelSelector
             value={cfg.modelId}
@@ -236,44 +282,6 @@ function DialogueSideEditor({
       <VoiceSettingsControls value={cfg.settings} onChange={(v) => set({ ...cfg, settings: v })} />
 
       <Card>
-        <h3 className="text-sm font-semibold mb-2">Lines ({lines.length})</h3>
-        <div className="space-y-2">
-          {lines.map((line, i) => (
-            <div key={i} className="border border-default rounded p-2 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted">Line {i + 1}</span>
-                <button
-                  type="button"
-                  onClick={() => removeLine(lines, setLines, i)}
-                  className="text-xs px-2 py-0.5 rounded border border-default hover:bg-surface-subtle"
-                  disabled={lines.length === 1}
-                >
-                  Remove
-                </button>
-              </div>
-              {!cfg.useSameVoice && (
-                <VoiceSelector
-                  value={line.voice_id}
-                  onChange={(v) => patchLine(lines, setLines, i, { voice_id: v })}
-                />
-              )}
-              <Textarea
-                rows={2}
-                value={line.text}
-                onChange={(e) => patchLine(lines, setLines, i, { text: e.target.value })}
-                placeholder="[whispers] What if it doesn't work?"
-              />
-            </div>
-          ))}
-        </div>
-        <div className="mt-3">
-          <Button variant="outline" onClick={() => addLine(lines, setLines)}>
-            + Add line
-          </Button>
-        </div>
-      </Card>
-
-      <Card>
         <h3 className="text-sm font-semibold mb-2">Output</h3>
         {cfg.elapsed !== null && (
           <div className="text-xs text-muted mb-1">Generated in {(cfg.elapsed / 1000).toFixed(1)}s</div>
@@ -291,7 +299,7 @@ function DialogueSideEditor({
 }
 
 /* ============================================================
- * Main page component.
+ * Main page.
  * ============================================================ */
 export default function ABTestPage() {
   const { apiKey, voices } = useStore();
@@ -310,10 +318,6 @@ export default function ABTestPage() {
   // ---------------- Dialogue state ----------------
   const [linesA, setLinesA] = useState<DialogueLine[]>([...DEFAULT_DIALOGUE_LINES]);
   const [linesB, setLinesB] = useState<DialogueLine[]>([...DEFAULT_DIALOGUE_LINES]);
-  // Default UNLINKED in dialogue mode — the typical use case for dialogue A/B
-  // is comparing different line arrangements (e.g. with vs without a trailing
-  // " ..." on the last line). Defaulting to linked silently mirrors edits,
-  // which the user reasonably called out as defeating the purpose.
   const [linkedLines, setLinkedLines] = useState(false);
   const [dA, setDA] = useState<DialogueSide>(initialDialogue());
   const [dB, setDB] = useState<DialogueSide>(initialDialogue());
@@ -327,7 +331,7 @@ export default function ABTestPage() {
     setTextB(next);
     if (linkedText) setTextA(next);
   };
-  const toggleLink = () => {
+  const toggleTextLink = () => {
     if (!linkedText) setTextB(textA);
     setLinkedText((v) => !v);
   };
@@ -450,8 +454,8 @@ export default function ABTestPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">A/B Compare</h1>
         <p className="text-sm text-muted mt-1">
-          Two configurations, side-by-side. Compare voice settings on the same input, swap settings to test how the same
-          voice handles different text, or compare endpoints (TTS vs Dialogue).
+          Two configurations, side-by-side. Compare voice settings on the same input, or compare different inputs under
+          the same settings — your call. Works for both single-speaker TTS and multi-speaker Dialogue.
         </p>
       </div>
 
@@ -481,15 +485,16 @@ export default function ABTestPage() {
       </div>
 
       {mode === "tts" ? (
+        /* ============== TTS LAYOUT ============== */
         <>
-          {/* TTS text inputs */}
+          {/* Text input(s) at top — linked (one shared) or independent (two side-by-side) */}
           {linkedText ? (
             <Card className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <Label className="m-0">Text (both sides)</Label>
                 <button
                   type="button"
-                  onClick={toggleLink}
+                  onClick={toggleTextLink}
                   className="text-xs px-2 py-1 rounded border border-default hover:bg-surface-subtle"
                   title="Use different text on each side"
                 >
@@ -509,11 +514,10 @@ export default function ABTestPage() {
                   <Label className="m-0">Text A</Label>
                   <button
                     type="button"
-                    onClick={toggleLink}
+                    onClick={toggleTextLink}
                     className="text-xs px-2 py-1 rounded border border-default hover:bg-surface-subtle"
-                    title="Sync both sides to use the same text"
                   >
-                    ⛓️‍💥 Unlinked — click to link
+                    ⛓️‍💥 Independent — click to link
                   </button>
                 </div>
                 <Textarea rows={5} value={textA} onChange={(e) => updateTextA(e.target.value)} />
@@ -523,7 +527,6 @@ export default function ABTestPage() {
                     type="button"
                     onClick={() => setTextB(textA)}
                     className="text-xs px-2 py-1 rounded border border-default hover:bg-surface-subtle"
-                    title="Copy this text into Text B"
                   >
                     Copy A → B
                   </button>
@@ -544,7 +547,6 @@ export default function ABTestPage() {
                     type="button"
                     onClick={() => setTextA(textB)}
                     className="text-xs px-2 py-1 rounded border border-default hover:bg-surface-subtle"
-                    title="Copy this text into Text A"
                   >
                     Copy B → A
                   </button>
@@ -563,14 +565,12 @@ export default function ABTestPage() {
             <Button
               variant="outline"
               onClick={() => setB({ ...a, audio: null, elapsed: null, error: null })}
-              title="Copy Side A's voice + settings into Side B"
             >
               Copy A → B (settings)
             </Button>
             <Button
               variant="outline"
               onClick={() => setA({ ...b, audio: null, elapsed: null, error: null })}
-              title="Copy Side B's voice + settings into Side A"
             >
               Copy B → A (settings)
             </Button>
@@ -582,34 +582,85 @@ export default function ABTestPage() {
           </div>
         </>
       ) : (
+        /* ============== DIALOGUE LAYOUT (mirrors TTS) ============== */
         <>
-          {/* Dialogue mode top bar */}
-          <Card className={`mb-4 ${linkedLines ? "border-2 border-accent" : ""}`}>
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="text-xs text-muted">
-                {linkedLines ? (
-                  <span>
-                    <strong>Lines are mirrored across sides.</strong> Editing A also updates B (and vice versa). Use
-                    this to compare different settings on the same lines. Click the toggle to make sides independent.
-                  </span>
-                ) : (
-                  <span>
-                    <strong>Sides are independent.</strong> Edit A and B separately to compare different line
-                    arrangements. Click the toggle to keep them in sync.
-                  </span>
-                )}
+          {/* Lines list(s) at top — linked (one shared) or independent (two side-by-side) */}
+          {linkedLines ? (
+            <Card className="mb-4 border-2 border-accent">
+              <div className="flex items-center justify-between mb-3">
+                <Label className="m-0">Lines (both sides — mirrored)</Label>
+                <button
+                  type="button"
+                  onClick={toggleLinesLink}
+                  className="text-xs px-3 py-1.5 rounded border border-accent bg-surface-subtle font-semibold"
+                  title="Make sides independent so A and B can hold different lines"
+                >
+                  🔗 Linked — click to unlink
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={toggleLinesLink}
-                className={`text-xs px-3 py-1.5 rounded border ${
-                  linkedLines ? "border-accent bg-surface-subtle font-semibold" : "border-default hover:bg-surface-subtle"
-                }`}
-              >
-                {linkedLines ? "🔗 Linked — click to unlink" : "⛓️‍💥 Independent — click to link"}
-              </button>
+              <LinesEditor
+                lines={linesA}
+                setLines={updateLinesA}
+                hideVoicePicker={dA.useSameVoice && dB.useSameVoice}
+              />
+              <div className="text-xs text-muted mt-2">
+                Editing here updates both Side A and Side B. Per-line voice picker is hidden when both sides have
+                &quot;Use same voice&quot; enabled.
+              </div>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <Card>
+                <div className="flex items-center justify-between mb-3">
+                  <Label className="m-0">Lines A</Label>
+                  <button
+                    type="button"
+                    onClick={toggleLinesLink}
+                    className="text-xs px-3 py-1.5 rounded border border-default hover:bg-surface-subtle"
+                    title="Keep both sides in sync"
+                  >
+                    ⛓️‍💥 Independent — click to link
+                  </button>
+                </div>
+                <LinesEditor
+                  lines={linesA}
+                  setLines={updateLinesA}
+                  hideVoicePicker={dA.useSameVoice}
+                />
+                <div className="flex justify-end mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setLinesB(linesA.map((l) => ({ ...l })))}
+                    className="text-xs px-2 py-1 rounded border border-default hover:bg-surface-subtle"
+                    title="Copy these lines into Side B"
+                  >
+                    Copy A → B
+                  </button>
+                </div>
+              </Card>
+              <Card>
+                <div className="flex items-center justify-between mb-3">
+                  <Label className="m-0">Lines B</Label>
+                  <span className="text-xs text-muted">Independent input</span>
+                </div>
+                <LinesEditor
+                  lines={linesB}
+                  setLines={updateLinesB}
+                  hideVoicePicker={dB.useSameVoice}
+                />
+                <div className="flex justify-end mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setLinesA(linesB.map((l) => ({ ...l })))}
+                    className="text-xs px-2 py-1 rounded border border-default hover:bg-surface-subtle"
+                    title="Copy these lines into Side A"
+                  >
+                    Copy B → A
+                  </button>
+                </div>
+              </Card>
             </div>
-          </Card>
+          )}
 
           <div className="flex gap-2 mb-6 flex-wrap">
             <Button onClick={runBothDialogue} disabled={dA.loading || dB.loading}>
@@ -617,23 +668,17 @@ export default function ABTestPage() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => {
-                setDB({ ...dA, audio: null, elapsed: null, error: null });
-                setLinesB(linesA.map((l) => ({ ...l })));
-              }}
-              title="Copy Side A's settings AND lines into Side B"
+              onClick={() => setDB({ ...dA, audio: null, elapsed: null, error: null })}
+              title="Copy Side A's settings into Side B (lines unaffected)"
             >
-              Copy A → B (settings + lines)
+              Copy A → B (settings)
             </Button>
             <Button
               variant="outline"
-              onClick={() => {
-                setDA({ ...dB, audio: null, elapsed: null, error: null });
-                setLinesA(linesB.map((l) => ({ ...l })));
-              }}
-              title="Copy Side B's settings AND lines into Side A"
+              onClick={() => setDA({ ...dB, audio: null, elapsed: null, error: null })}
+              title="Copy Side B's settings into Side A (lines unaffected)"
             >
-              Copy B → A (settings + lines)
+              Copy B → A (settings)
             </Button>
           </div>
 
@@ -644,7 +689,6 @@ export default function ABTestPage() {
               set={setDA}
               color="accent"
               lines={linesA}
-              setLines={updateLinesA}
               onRun={runOneDialogue}
             />
             <DialogueSideEditor
@@ -653,7 +697,6 @@ export default function ABTestPage() {
               set={setDB}
               color="warn"
               lines={linesB}
-              setLines={updateLinesB}
               onRun={runOneDialogue}
             />
           </div>
