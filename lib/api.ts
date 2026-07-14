@@ -8,7 +8,11 @@ import type {
   VoiceSettings,
   DialogueLine,
   PronunciationDictionary,
+  DialogueAlignment,
+  VoiceSegment,
+  DialogueTimestampsResult,
 } from "./types";
+import { base64ToBlob } from "./alignment";
 
 const BASE = "https://api.elevenlabs.io";
 
@@ -168,6 +172,44 @@ export async function textToDialogue(apiKey: string, opts: DialogueOptions): Pro
     body: JSON.stringify(body),
   });
   return blobOrThrow(r);
+}
+
+// POST /v1/text-to-dialogue/with-timestamps — same request as textToDialogue but
+// returns a JSON envelope { audio_base64, alignment, normalized_alignment,
+// voice_segments } instead of raw audio bytes. The audio is decoded to a Blob so
+// callers treat it like any other player source.
+export async function textToDialogueWithTimestamps(
+  apiKey: string,
+  opts: DialogueOptions,
+): Promise<DialogueTimestampsResult> {
+  const url = new URL(`${BASE}/v1/text-to-dialogue/with-timestamps`);
+  if (opts.outputFormat) url.searchParams.set("output_format", opts.outputFormat);
+  const body: Record<string, unknown> = {
+    inputs: opts.inputs,
+    model_id: opts.modelId || "eleven_v3",
+  };
+  if (opts.settings) body.settings = opts.settings;
+  if (opts.applyTextNormalization) body.apply_text_normalization = opts.applyTextNormalization;
+  if (opts.seed !== undefined) body.seed = opts.seed;
+  const r = await fetch(url.toString(), {
+    method: "POST",
+    headers: authHeaders(apiKey),
+    body: JSON.stringify(body),
+  });
+  const data = await jsonOrThrow<{
+    audio_base64: string;
+    alignment: DialogueAlignment | null;
+    normalized_alignment: DialogueAlignment | null;
+    voice_segments?: VoiceSegment[];
+  }>(r);
+  const mime = (opts.outputFormat || "mp3_44100_128").startsWith("pcm") ? "audio/wav" : "audio/mpeg";
+  return {
+    audioBlob: base64ToBlob(data.audio_base64, mime),
+    audioMime: mime,
+    alignment: data.alignment ?? null,
+    normalizedAlignment: data.normalized_alignment ?? null,
+    voiceSegments: data.voice_segments ?? [],
+  };
 }
 
 // ---------------- Voice Design (text-to-voice) ----------------

@@ -53,6 +53,31 @@ export interface DialogueLine {
   voice_id: string;
 }
 
+// ---- Text-to-Dialogue with timestamps (POST /v1/text-to-dialogue/with-timestamps) ----
+
+export interface DialogueAlignment {
+  characters: string[];
+  character_start_times_seconds: number[];
+  character_end_times_seconds: number[];
+}
+
+export interface VoiceSegment {
+  voice_id: string;
+  start_time_seconds: number;
+  end_time_seconds: number;
+  character_start_index: number;
+  character_end_index: number;
+  dialogue_input_index: number;
+}
+
+export interface DialogueTimestampsResult {
+  audioBlob: Blob;
+  audioMime: string;
+  alignment: DialogueAlignment | null;
+  normalizedAlignment: DialogueAlignment | null;
+  voiceSegments: VoiceSegment[];
+}
+
 export interface PronunciationDictionary {
   id: string;
   version_id?: string;

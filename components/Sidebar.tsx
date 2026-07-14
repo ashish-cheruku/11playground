@@ -15,6 +15,7 @@ import {
   FileText,
   BookOpen,
   Scale,
+  Clock,
   History,
   type LucideIcon,
 } from "lucide-react";
@@ -53,6 +54,7 @@ const NAV: NavGroup[] = [
     group: "Research",
     items: [
       { href: "/ab-test", label: "A/B Compare", icon: Scale },
+      { href: "/dialogue-ab", label: "Dialogue A/B ⏱", icon: Clock },
       { href: "/history", label: "History", icon: History },
     ],
   },
