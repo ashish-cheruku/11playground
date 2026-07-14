@@ -55,7 +55,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       {/* Sidebar — slide-in drawer on mobile, static column on md+ */}
       <div
-        className={`fixed md:static inset-y-0 left-0 z-50 transform transition-transform duration-200 ease-out md:transform-none ${
+        className={`fixed md:sticky md:top-0 md:self-start md:h-screen inset-y-0 left-0 z-50 transform transition-transform duration-200 ease-out md:transform-none ${
           drawerOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >

@@ -63,7 +63,7 @@ const NAV: NavGroup[] = [
 export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const pathname = usePathname();
   return (
-    <aside className="w-64 shrink-0 border-r border-border bg-panel min-h-screen h-screen md:h-auto flex flex-col overflow-y-auto">
+    <aside className="w-64 shrink-0 border-r border-border bg-panel h-screen flex flex-col overflow-hidden">
       <div className="px-4 py-5 pr-12 md:pr-4 border-b border-border flex items-start justify-between gap-3">
         <Link href="/" onClick={onNavigate} className="block min-w-0">
           <div className="text-base font-semibold tracking-tight">ElevenLabs</div>
