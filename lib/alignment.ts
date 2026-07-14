@@ -35,6 +35,7 @@ export interface WordTiming {
 export function alignmentToWords(
   a: DialogueAlignment | null,
   segments: VoiceSegment[] = [],
+  stripTags = false,
 ): WordTiming[] {
   if (!a || !a.characters?.length) return [];
   const chars = a.characters;
@@ -66,12 +67,28 @@ export function alignmentToWords(
     cur = "";
     startIdx = -1;
   };
+  let insideTag = false;
   for (let i = 0; i < chars.length; i++) {
-    if (/\s/.test(chars[i] ?? "")) {
+    const ch = chars[i] ?? "";
+    // Audio/emotion tags like [whispers] are v3 delivery instructions, not
+    // spoken words, but ElevenLabs returns them in the alignment. Skip the whole
+    // [...] span so the karaoke transcript reads as clean speech.
+    if (stripTags) {
+      if (ch === "[") {
+        flush(i - 1);
+        insideTag = true;
+        continue;
+      }
+      if (insideTag) {
+        if (ch === "]") insideTag = false;
+        continue;
+      }
+    }
+    if (/\s/.test(ch)) {
       flush(i - 1);
     } else {
       if (startIdx < 0) startIdx = i;
-      cur += chars[i];
+      cur += ch;
     }
   }
   flush(chars.length - 1);
@@ -90,21 +107,30 @@ export interface LineTiming {
   duration: number;
 }
 
+/** Remove [audio tags] from a string, collapsing the leftover whitespace. */
+export function stripAudioTags(text: string): string {
+  return text.replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export function segmentsToLines(
   segments: VoiceSegment[],
   a: DialogueAlignment | null,
   voiceName: (id: string) => string,
+  stripTags = false,
 ): LineTiming[] {
   return segments
-    .map((s) => ({
-      index: s.dialogue_input_index,
-      voiceId: s.voice_id,
-      voiceName: voiceName(s.voice_id),
-      text: a ? a.characters.slice(s.character_start_index, s.character_end_index).join("").trim() : "",
-      start: s.start_time_seconds,
-      end: s.end_time_seconds,
-      duration: Math.max(0, s.end_time_seconds - s.start_time_seconds),
-    }))
+    .map((s) => {
+      const raw = a ? a.characters.slice(s.character_start_index, s.character_end_index).join("") : "";
+      return {
+        index: s.dialogue_input_index,
+        voiceId: s.voice_id,
+        voiceName: voiceName(s.voice_id),
+        text: stripTags ? stripAudioTags(raw) : raw.trim(),
+        start: s.start_time_seconds,
+        end: s.end_time_seconds,
+        duration: Math.max(0, s.end_time_seconds - s.start_time_seconds),
+      };
+    })
     .sort((x, y) => x.start - y.start);
 }
 

@@ -36,6 +36,7 @@ export function DialogueTimestamps({
 }) {
   const [t, setT] = useState(0);
   const [showNormalized, setShowNormalized] = useState(false);
+  const [showTags, setShowTags] = useState(false);
   const playerRef = useRef<SyncedPlayerHandle>(null);
   const seek = (to: number) => playerRef.current?.seek(to);
 
@@ -50,10 +51,13 @@ export function DialogueTimestamps({
     [result.voiceSegments],
   );
   const lines = useMemo(
-    () => segmentsToLines(result.voiceSegments, align, voiceName),
-    [result.voiceSegments, align, voiceName],
+    () => segmentsToLines(result.voiceSegments, align, voiceName, !showTags),
+    [result.voiceSegments, align, voiceName, showTags],
   );
-  const words = useMemo(() => alignmentToWords(align, result.voiceSegments), [align, result.voiceSegments]);
+  const words = useMemo(
+    () => alignmentToWords(align, result.voiceSegments, !showTags),
+    [align, result.voiceSegments, showTags],
+  );
   const metrics = useMemo(
     () => computeMetrics(align, result.voiceSegments, voiceName),
     [align, result.voiceSegments, voiceName],
@@ -67,8 +71,8 @@ export function DialogueTimestamps({
   );
 
   const normWords = useMemo(
-    () => (result.normalizedAlignment ? alignmentToWords(result.normalizedAlignment) : []),
-    [result.normalizedAlignment],
+    () => (result.normalizedAlignment ? alignmentToWords(result.normalizedAlignment, [], !showTags) : []),
+    [result.normalizedAlignment, showTags],
   );
   const activeNormWord = activeWordIndex(normWords, t);
 
@@ -145,7 +149,13 @@ export function DialogueTimestamps({
 
       {/* Karaoke transcript */}
       <Card>
-        <div className="text-xs font-semibold mb-2">Transcript · highlights with playback · click a word to seek</div>
+        <div className="flex items-center justify-between mb-2 gap-2">
+          <div className="text-xs font-semibold">Transcript · highlights with playback · click a word to seek</div>
+          <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none shrink-0">
+            <input type="checkbox" checked={showTags} onChange={(e) => setShowTags(e.target.checked)} />
+            Show audio tags
+          </label>
+        </div>
         <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
           {wordsByLine.map(({ line, ws }, li) => (
             <div key={li} className="flex gap-2">
