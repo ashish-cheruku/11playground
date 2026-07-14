@@ -1,11 +1,12 @@
 "use client";
 
-// Dialogue A/B + Timestamps — run two text-to-dialogue configs on the same (or
-// independent) script and compare them. A global "Include timestamps" switch
-// flips both sides between POST /v1/text-to-dialogue (audio only) and
-// POST /v1/text-to-dialogue/with-timestamps (audio + alignment + voice_segments),
-// which unlocks the karaoke transcript / speaker timeline / segment table /
-// metrics / SRT-VTT-JSON-CSV export per side plus an A/B comparison summary.
+// Dialogue A/B + Timestamps — run two text-to-dialogue renders on the same (or
+// independent) script and compare them. Each side INDEPENDENTLY picks its
+// endpoint: "with timestamps" (POST /v1/text-to-dialogue/with-timestamps → audio
+// + alignment + voice_segments, unlocking the karaoke transcript / speaker
+// timeline / segment timings / metrics / SRT-VTT-JSON-CSV export) or plain
+// (POST /v1/text-to-dialogue → audio only). Default: A = with, B = without, so
+// out of the box you're comparing the timestamped render against the plain one.
 
 import { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
@@ -21,6 +22,7 @@ import { DialogueTimestamps } from "@/components/DialogueTimestamps";
 import type { VoiceSettings, DialogueLine, DialogueTimestampsResult } from "@/lib/types";
 
 interface Side {
+  timestamps: boolean;
   modelId: string;
   settings: VoiceSettings;
   outputFormat: string;
@@ -34,7 +36,8 @@ interface Side {
   ts: DialogueTimestampsResult | null;
 }
 
-const initialSide = (): Side => ({
+const initialSide = (timestamps: boolean): Side => ({
+  timestamps,
   modelId: "eleven_v3",
   settings: { stability: 0.45, similarity_boost: 0.75, style: 0.4, use_speaker_boost: true, speed: 1.0 },
   outputFormat: "mp3_44100_128",
@@ -106,6 +109,21 @@ function SideConfig({ label, cfg, set, color }: { label: "A" | "B"; cfg: Side; s
         <h2 className="text-lg font-semibold">{label}</h2>
         <Badge color={color}>{cfg.modelId || "default"}</Badge>
       </div>
+
+      {/* Per-side endpoint choice — this is the with/without axis. */}
+      <Card className={cfg.timestamps ? "border-2 border-accent" : ""}>
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input type="checkbox" className="h-4 w-4" checked={cfg.timestamps} onChange={(e) => set({ ...cfg, timestamps: e.target.checked })} />
+          <span className="text-sm font-semibold">Timestamps</span>
+          <Badge color={cfg.timestamps ? "success" : "muted"}>{cfg.timestamps ? "with-timestamps" : "audio only"}</Badge>
+        </label>
+        <p className="text-xs text-muted mt-1.5">
+          {cfg.timestamps
+            ? "POST /v1/text-to-dialogue/with-timestamps → karaoke, timeline, segment timings, metrics, export"
+            : "POST /v1/text-to-dialogue → plays the audio, nothing else"}
+        </p>
+      </Card>
+
       <Card>
         <div className="space-y-3">
           <label className="flex items-center gap-2 text-xs">
@@ -134,12 +152,11 @@ function SideConfig({ label, cfg, set, color }: { label: "A" | "B"; cfg: Side; s
 
 export default function DialogueABPage() {
   const { apiKey, voices } = useStore();
-  const [withTimestamps, setWithTimestamps] = useState(true);
   const [linesA, setLinesA] = useState<DialogueLine[]>([...DEFAULT_LINES]);
   const [linesB, setLinesB] = useState<DialogueLine[]>([...DEFAULT_LINES]);
   const [linked, setLinked] = useState(true);
-  const [a, setA] = useState<Side>(initialSide());
-  const [b, setB] = useState<Side>(initialSide());
+  const [a, setA] = useState<Side>(initialSide(true)); // A = with timestamps
+  const [b, setB] = useState<Side>(initialSide(false)); // B = without
 
   const updateLinesA = (n: DialogueLine[]) => {
     setLinesA(n);
@@ -171,7 +188,7 @@ export default function DialogueABPage() {
         settings: cfg.settings,
       };
       const chars = resolved.reduce((s, l) => s + l.text.length, 0);
-      if (withTimestamps) {
+      if (cfg.timestamps) {
         const ts = await textToDialogueWithTimestamps(apiKey, opts);
         set({ ...cfg, loading: false, ts, elapsed: Date.now() - t0 });
         await saveHistory({
@@ -205,6 +222,8 @@ export default function DialogueABPage() {
     return (id: string) => m.get(id) ?? `${id.slice(0, 8)}…`;
   }, [voices]);
 
+  // Only meaningful when BOTH sides produced timestamps (e.g. comparing two
+  // configs by their timings). With-vs-without is a visual comparison instead.
   const cmp = useMemo(() => {
     if (!a.ts || !b.ts) return null;
     return {
@@ -218,24 +237,13 @@ export default function DialogueABPage() {
       <div className="mb-4">
         <h1 className="text-2xl font-semibold">Dialogue A/B + Timestamps</h1>
         <p className="text-sm text-muted mt-1">
-          Two dialogue configs, side by side. Flip timestamps on to get a synced karaoke transcript, a per-speaker
-          timeline, per-segment timings, metrics, and subtitle export — for each side, plus an A/B comparison.
+          Two renders of the same (or independent) script, side by side. Each side picks its own endpoint with the
+          <span className="text-accent font-medium"> Timestamps </span>
+          switch on its card — <strong>with</strong> (karaoke transcript, speaker timeline, per-segment timings, metrics,
+          subtitle export) or <strong>without</strong> (audio only). It starts as <strong>A = with, B = without</strong>,
+          so you can compare them directly. Flip both on to A/B two configs by their timings.
         </p>
       </div>
-
-      {/* Timestamps toggle */}
-      <Card className="mb-4">
-        <label className="flex items-center gap-3 cursor-pointer select-none">
-          <input type="checkbox" className="h-4 w-4" checked={withTimestamps} onChange={(e) => setWithTimestamps(e.target.checked)} />
-          <span className="text-sm font-medium">Include timestamps</span>
-          <Badge color={withTimestamps ? "success" : "muted"}>
-            {withTimestamps ? "/v1/text-to-dialogue/with-timestamps" : "/v1/text-to-dialogue"}
-          </Badge>
-          <span className="text-xs text-muted ml-1">
-            {withTimestamps ? "audio + alignment + voice_segments" : "audio only"}
-          </span>
-        </label>
-      </Card>
 
       {/* Lines */}
       {linked ? (
@@ -269,16 +277,19 @@ export default function DialogueABPage() {
         </div>
       )}
 
-      <div className="flex gap-2 mb-6 flex-wrap">
+      <div className="flex gap-2 mb-6 flex-wrap items-center">
         <Button onClick={runBoth} disabled={a.loading || b.loading}>
           {a.loading || b.loading ? <Spinner size={14} /> : "▶▶ Run both"}
         </Button>
-        <Button variant="outline" onClick={() => setB({ ...a, audio: null, ts: null, elapsed: null, error: null })}>
+        <Button variant="outline" onClick={() => setB({ ...a, timestamps: b.timestamps, audio: null, ts: null, elapsed: null, error: null })}>
           Copy A → B (settings)
         </Button>
-        <Button variant="outline" onClick={() => setA({ ...b, audio: null, ts: null, elapsed: null, error: null })}>
+        <Button variant="outline" onClick={() => setA({ ...b, timestamps: a.timestamps, audio: null, ts: null, elapsed: null, error: null })}>
           Copy B → A (settings)
         </Button>
+        <span className="text-xs text-muted ml-1">
+          Now: A {a.timestamps ? "with ⏱" : "plain"} · B {b.timestamps ? "with ⏱" : "plain"}
+        </span>
       </div>
 
       {/* Config + output per side */}
@@ -289,7 +300,9 @@ export default function DialogueABPage() {
               <SideConfig label={label} cfg={cfg} set={set} color={color} />
               <Card>
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-semibold">Output {label}</h3>
+                  <h3 className="text-sm font-semibold">
+                    Output {label} <span className="text-muted font-normal">· {cfg.timestamps ? "with timestamps" : "audio only"}</span>
+                  </h3>
                   {cfg.elapsed !== null && <span className="text-xs text-muted">{(cfg.elapsed / 1000).toFixed(1)}s</span>}
                 </div>
                 <ErrorBox msg={cfg.error} />
@@ -309,10 +322,10 @@ export default function DialogueABPage() {
         )}
       </div>
 
-      {/* A/B comparison */}
+      {/* A/B comparison — both sides with timestamps */}
       {cmp && (
         <Card className="mt-6">
-          <h3 className="text-sm font-semibold mb-3">A/B comparison</h3>
+          <h3 className="text-sm font-semibold mb-3">A/B comparison (both sides timestamped)</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-muted text-xs">
