@@ -6,12 +6,12 @@
 // create ONE cloned voice from the combined clip set. IVC averages the acoustic
 // characteristics of everything it's given, so the result is a genuine blend —
 // tilt the slider to weight it toward either parent. The fused voice is a real
-// voice in your account (delete button provided); each fuse spends a little TTS
-// + one clone.
+// voice in your account (delete button provided); each fuse spends a little
+// dialogue generation + one clone.
 
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { listVoices, textToSpeech, voiceCloneAdd, voiceDelete } from "@/lib/api";
+import { listVoices, textToDialogue, voiceCloneAdd, voiceDelete } from "@/lib/api";
 import { Card, Textarea, Button, Input, Label, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { AudioPlayer } from "@/components/AudioPlayer";
@@ -29,11 +29,23 @@ const SAMPLE_LINES = [
 // Same line rendered by A, the fusion, and B — this is the a/b/fusion comparison.
 const COMPARE_LINE =
   "Here's how I sound — listen to the warmth, the timbre, and the pace of my delivery.";
-// Clean, non-expressive model for clone samples + comparisons.
-const MODEL = "eleven_multilingual_v2";
+const MODEL = "eleven_v3";
 
-async function ttsFile(apiKey: string, voiceId: string, text: string, name: string): Promise<File> {
-  const blob = await textToSpeech(apiKey, { voiceId, text, modelId: MODEL, outputFormat: "mp3_44100_128" });
+// Every generation here goes through text-to-dialogue. It takes an array of
+// speakers, so a single-element array renders one voice alone — that keeps the
+// clone samples one-voice-per-file (IVC needs that) and the comparison players
+// separate. Sample lines stay free of audio tags: v3 is expressive by default,
+// and tagged delivery would be baked into the clone.
+function speak(apiKey: string, voiceId: string, text: string, outputFormat?: string): Promise<Blob> {
+  return textToDialogue(apiKey, {
+    inputs: [{ voice_id: voiceId, text }],
+    modelId: MODEL,
+    outputFormat,
+  });
+}
+
+async function sampleFile(apiKey: string, voiceId: string, text: string, name: string): Promise<File> {
+  const blob = await speak(apiKey, voiceId, text, "mp3_44100_128");
   return new File([blob], name, { type: "audio/mpeg" });
 }
 
@@ -74,11 +86,11 @@ export default function VoiceFusionPage() {
     try {
       // 1. Sample clips — countA lines by A, the next countB lines by B.
       const filesA = await Promise.all(
-        Array.from({ length: countA }, (_, i) => ttsFile(apiKey, voiceA, SAMPLE_LINES[i % SAMPLE_LINES.length], `a${i}.mp3`)),
+        Array.from({ length: countA }, (_, i) => sampleFile(apiKey, voiceA, SAMPLE_LINES[i % SAMPLE_LINES.length], `a${i}.mp3`)),
       );
       const filesB = await Promise.all(
         Array.from({ length: countB }, (_, i) =>
-          ttsFile(apiKey, voiceB, SAMPLE_LINES[(countA + i) % SAMPLE_LINES.length], `b${i}.mp3`),
+          sampleFile(apiKey, voiceB, SAMPLE_LINES[(countA + i) % SAMPLE_LINES.length], `b${i}.mp3`),
         ),
       );
       // 2. Clone ONE voice from the combined set → the fusion.
@@ -96,9 +108,9 @@ export default function VoiceFusionPage() {
       } catch {}
       // 3. Same line via A, the fusion, and B → the comparison.
       const [a, fusedBlob, b] = await Promise.all([
-        textToSpeech(apiKey, { voiceId: voiceA, text: COMPARE_LINE, modelId: MODEL }),
-        textToSpeech(apiKey, { voiceId: voice_id, text: COMPARE_LINE, modelId: MODEL }),
-        textToSpeech(apiKey, { voiceId: voiceB, text: COMPARE_LINE, modelId: MODEL }),
+        speak(apiKey, voiceA, COMPARE_LINE),
+        speak(apiKey, voice_id, COMPARE_LINE),
+        speak(apiKey, voiceB, COMPARE_LINE),
       ]);
       setCmp({ a, fused: fusedBlob, b });
     } catch (e) {
@@ -113,7 +125,7 @@ export default function VoiceFusionPage() {
     setTrying(true);
     setTryAudio(null);
     try {
-      setTryAudio(await textToSpeech(apiKey, { voiceId: fused.id, text: tryText, modelId: MODEL }));
+      setTryAudio(await speak(apiKey, fused.id, tryText));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
