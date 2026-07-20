@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { useStore } from "@/lib/store";
 import { textToSpeech, textToDialogue } from "@/lib/api";
 import { saveHistory, genId } from "@/lib/history";
@@ -165,10 +165,10 @@ function TTSSideEditor({
 }: {
   label: "A" | "B";
   cfg: TTSSide;
-  set: (c: TTSSide) => void;
+  set: Dispatch<SetStateAction<TTSSide>>;
   color: "accent" | "warn";
   text: string;
-  onRun: (side: "A" | "B", cfg: TTSSide, set: (c: TTSSide) => void, text: string) => void;
+  onRun: (side: "A" | "B", cfg: TTSSide, set: Dispatch<SetStateAction<TTSSide>>, text: string) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -234,10 +234,15 @@ function DialogueSideEditor({
 }: {
   label: "A" | "B";
   cfg: DialogueSide;
-  set: (c: DialogueSide) => void;
+  set: Dispatch<SetStateAction<DialogueSide>>;
   color: "accent" | "warn";
   lines: DialogueLine[];
-  onRun: (side: "A" | "B", cfg: DialogueSide, set: (c: DialogueSide) => void, lines: DialogueLine[]) => void;
+  onRun: (
+    side: "A" | "B",
+    cfg: DialogueSide,
+    set: Dispatch<SetStateAction<DialogueSide>>,
+    lines: DialogueLine[],
+  ) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -336,17 +341,21 @@ export default function ABTestPage() {
     setLinkedText((v) => !v);
   };
 
+  // `cfg` is the click-time snapshot and is what the REQUEST is built from — that
+  // part is deliberate. State writes, though, must merge into whatever the state
+  // is when the response lands (functional updates), or edits the user makes
+  // while the request is in flight get reverted by a stale spread.
   const runOneTTS = async (
     side: "A" | "B",
     cfg: TTSSide,
-    set: (c: TTSSide) => void,
+    set: Dispatch<SetStateAction<TTSSide>>,
     text: string
   ): Promise<void> => {
     if (!cfg.voiceId) {
-      set({ ...cfg, error: "Pick a voice" });
+      set((prev) => ({ ...prev, error: "Pick a voice" }));
       return;
     }
-    set({ ...cfg, loading: true, error: null, audio: null });
+    set((prev) => ({ ...prev, loading: true, error: null, audio: null, elapsed: null }));
     const t0 = Date.now();
     try {
       const blob = await textToSpeech(apiKey, {
@@ -358,7 +367,7 @@ export default function ABTestPage() {
         seed: cfg.seed.trim() ? parseInt(cfg.seed.trim()) : undefined,
       });
       const v = voices.find((vv) => vv.voice_id === cfg.voiceId);
-      set({ ...cfg, loading: false, audio: blob, elapsed: Date.now() - t0 });
+      set((prev) => ({ ...prev, loading: false, error: null, audio: blob, elapsed: Date.now() - t0 }));
       await saveHistory({
         id: genId(),
         createdAt: Date.now(),
@@ -375,7 +384,13 @@ export default function ABTestPage() {
         meta: { abSide: side, linkedText, mode: "tts" },
       });
     } catch (e) {
-      set({ ...cfg, loading: false, error: e instanceof Error ? e.message : String(e) });
+      set((prev) => ({
+        ...prev,
+        loading: false,
+        audio: null,
+        elapsed: null,
+        error: e instanceof Error ? e.message : String(e),
+      }));
     }
   };
 
@@ -400,7 +415,7 @@ export default function ABTestPage() {
   const runOneDialogue = async (
     side: "A" | "B",
     cfg: DialogueSide,
-    set: (c: DialogueSide) => void,
+    set: Dispatch<SetStateAction<DialogueSide>>,
     lines: DialogueLine[]
   ): Promise<void> => {
     // If "use same voice" is on, override each line's voice_id with singleVoiceId for the call.
@@ -408,10 +423,10 @@ export default function ABTestPage() {
       ? lines.map((l) => ({ ...l, voice_id: cfg.singleVoiceId }))
       : lines.map((l) => ({ ...l }));
     if (resolved.some((l) => !l.voice_id || !l.text.trim())) {
-      set({ ...cfg, error: "Every line needs a voice and text" });
+      set((prev) => ({ ...prev, error: "Every line needs a voice and text" }));
       return;
     }
-    set({ ...cfg, loading: true, error: null, audio: null });
+    set((prev) => ({ ...prev, loading: true, error: null, audio: null, elapsed: null }));
     const t0 = Date.now();
     try {
       const blob = await textToDialogue(apiKey, {
@@ -421,7 +436,7 @@ export default function ABTestPage() {
         seed: cfg.seed.trim() ? parseInt(cfg.seed.trim()) : undefined,
         settings: cfg.settings,
       });
-      set({ ...cfg, loading: false, audio: blob, elapsed: Date.now() - t0 });
+      set((prev) => ({ ...prev, loading: false, error: null, audio: blob, elapsed: Date.now() - t0 }));
       const totalChars = resolved.reduce((s, l) => s + l.text.length, 0);
       await saveHistory({
         id: genId(),
@@ -436,7 +451,13 @@ export default function ABTestPage() {
         meta: { abSide: side, linkedLines, mode: "dialogue", lines: resolved },
       });
     } catch (e) {
-      set({ ...cfg, loading: false, error: e instanceof Error ? e.message : String(e) });
+      set((prev) => ({
+        ...prev,
+        loading: false,
+        audio: null,
+        elapsed: null,
+        error: e instanceof Error ? e.message : String(e),
+      }));
     }
   };
 

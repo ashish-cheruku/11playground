@@ -244,6 +244,7 @@ export default function VoiceFusionPage() {
   async function tryFused() {
     if (!fused || !tryText.trim()) return;
     setTrying(true);
+    setError(null);
     setTryAudio(null);
     try {
       setTryAudio(await speak(apiKey, fused.id, tryText));
@@ -257,6 +258,7 @@ export default function VoiceFusionPage() {
   async function removeFused() {
     if (!fused) return;
     setDeleting(true);
+    setError(null);
     try {
       await voiceDelete(apiKey, fused.id);
       setFused(null);

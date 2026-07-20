@@ -8,7 +8,7 @@
 // (POST /v1/text-to-dialogue → audio only). Default: A = with, B = without, so
 // out of the box you're comparing the timestamped render against the plain one.
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useStore } from "@/lib/store";
 import { textToDialogue, textToDialogueWithTimestamps } from "@/lib/api";
 import { saveHistory, genId } from "@/lib/history";
@@ -171,13 +171,22 @@ export default function DialogueABPage() {
     setLinked((v) => !v);
   };
 
-  const runOne = async (side: "A" | "B", cfg: Side, set: (c: Side) => void, lines: DialogueLine[]) => {
+  // `cfg` is the click-time snapshot and is what the REQUEST is built from — that
+  // part is deliberate. State writes, though, must merge into whatever the state
+  // is when the response lands (functional updates), or edits the user makes
+  // while the request is in flight get reverted by a stale spread.
+  const runOne = async (
+    side: "A" | "B",
+    cfg: Side,
+    set: Dispatch<SetStateAction<Side>>,
+    lines: DialogueLine[],
+  ) => {
     const resolved = cfg.useSameVoice ? lines.map((l) => ({ ...l, voice_id: cfg.singleVoiceId })) : lines.map((l) => ({ ...l }));
     if (resolved.some((l) => !l.voice_id || !l.text.trim())) {
-      set({ ...cfg, error: "Every line needs a voice and text" });
+      set((prev) => ({ ...prev, error: "Every line needs a voice and text" }));
       return;
     }
-    set({ ...cfg, loading: true, error: null, audio: null, ts: null });
+    set((prev) => ({ ...prev, loading: true, error: null, audio: null, ts: null, elapsed: null }));
     const t0 = Date.now();
     try {
       const opts = {
@@ -190,7 +199,8 @@ export default function DialogueABPage() {
       const chars = resolved.reduce((s, l) => s + l.text.length, 0);
       if (cfg.timestamps) {
         const ts = await textToDialogueWithTimestamps(apiKey, opts);
-        set({ ...cfg, loading: false, ts, elapsed: Date.now() - t0 });
+        // audio/ts are mutually exclusive views of a run — set one, clear the other.
+        set((prev) => ({ ...prev, loading: false, error: null, audio: null, ts, elapsed: Date.now() - t0 }));
         await saveHistory({
           id: genId(), createdAt: Date.now(), kind: "dialogue",
           label: `[A/B ${side} ⏱] ${resolved.length} lines · ${resolved[0].text.slice(0, 40)}`,
@@ -200,7 +210,7 @@ export default function DialogueABPage() {
         });
       } else {
         const blob = await textToDialogue(apiKey, opts);
-        set({ ...cfg, loading: false, audio: blob, elapsed: Date.now() - t0 });
+        set((prev) => ({ ...prev, loading: false, error: null, audio: blob, ts: null, elapsed: Date.now() - t0 }));
         await saveHistory({
           id: genId(), createdAt: Date.now(), kind: "dialogue",
           label: `[A/B ${side}] ${resolved.length} lines · ${resolved[0].text.slice(0, 40)}`,
@@ -209,7 +219,14 @@ export default function DialogueABPage() {
         });
       }
     } catch (e) {
-      set({ ...cfg, loading: false, error: e instanceof Error ? e.message : String(e) });
+      set((prev) => ({
+        ...prev,
+        loading: false,
+        audio: null,
+        ts: null,
+        elapsed: null,
+        error: e instanceof Error ? e.message : String(e),
+      }));
     }
   };
 
