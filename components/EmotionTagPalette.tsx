@@ -4,7 +4,7 @@ import { useState } from "react";
 import { EMOTION_TAGS, PROSODY_HINTS } from "@/lib/emotionTags";
 import { Card, Badge } from "./ui";
 
-const GROUPS = ["Voice", "Emotion", "Non-verbal", "Pacing"] as const;
+const GROUPS = ["Voice", "Emotion", "Character", "Non-verbal", "Pacing"] as const;
 
 export function EmotionTagPalette({ onInsert }: { onInsert: (tag: string) => void }) {
   const [open, setOpen] = useState(true);

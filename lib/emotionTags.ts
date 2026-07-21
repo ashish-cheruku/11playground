@@ -36,6 +36,17 @@ export const EMOTION_TAGS: { tag: string; group: string; hint: string }[] = [
   { tag: "[clears throat]", group: "Non-verbal", hint: "Throat clear" },
   { tag: "[yawns]", group: "Non-verbal", hint: "Yawn" },
 
+  // Character — v3 reads these as character performance, letting one voice play
+  // several parts. Fuller directions live in lib/characterDirections.ts.
+  { tag: "[narrating neutrally]", group: "Character", hint: "Neutral narrator register" },
+  { tag: "[speaking as a young woman]", group: "Character", hint: "Perform as a young woman" },
+  { tag: "[speaking as a small child]", group: "Character", hint: "Perform as a child" },
+  { tag: "[speaking as an elderly man]", group: "Character", hint: "Perform as an old man" },
+  { tag: "[British accent]", group: "Character", hint: "British accent" },
+  { tag: "[strong Southern US accent]", group: "Character", hint: "Southern US accent" },
+  { tag: "[fantasy narrator]", group: "Character", hint: "Epic fantasy narration" },
+  { tag: "[classic film noir]", group: "Character", hint: "Noir detective register" },
+
   // Pacing
   { tag: "[pauses]", group: "Pacing", hint: "Brief pause" },
   { tag: "[long pause]", group: "Pacing", hint: "Longer pause" },
