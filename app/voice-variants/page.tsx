@@ -18,8 +18,9 @@
 
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { textToDialogue } from "@/lib/api";
+import { textToDialogue, voiceCloneAdd, listVoices } from "@/lib/api";
 import { saveHistory, genId } from "@/lib/history";
+import { SAMPLE_LINES } from "@/lib/sampleLines";
 import {
   CHARACTER_DIRECTIONS,
   DIRECTION_GROUPS,
@@ -34,6 +35,9 @@ import { AudioPlayer } from "@/components/AudioPlayer";
 
 const MODEL = "eleven_v3";
 const MAX_VARIANTS = 8;
+// Clips rendered per saved voice. Six distinct lines gives IVC enough phonetic
+// variety to learn the character, without spending a lot per save.
+const CLONE_CLIPS = 6;
 
 const DEFAULT_LINE = "I told you not to come here. Not tonight, not after everything that's happened.";
 
@@ -47,6 +51,16 @@ interface Variant {
   loading: boolean;
   error: string | null;
   elapsed: number | null;
+  // --- save-as-voice ---
+  /** Save panel open for this row. */
+  saveOpen: boolean;
+  saveName: string;
+  /** Render the clone's source clips at Natural for consistency, or at the
+   *  stability this row was auditioned with. */
+  saveConsistent: boolean;
+  saving: boolean;
+  saveError: string | null;
+  savedVoiceId: string | null;
 }
 
 const newVariant = (direction: string, stability: StabilityMode["key"] = "natural"): Variant => ({
@@ -57,7 +71,24 @@ const newVariant = (direction: string, stability: StabilityMode["key"] = "natura
   loading: false,
   error: null,
   elapsed: null,
+  saveOpen: false,
+  saveName: "",
+  saveConsistent: true,
+  saving: false,
+  saveError: null,
+  savedVoiceId: null,
 });
+
+/** Default voice name from a direction tag — the descriptive tail after the
+ *  first comma is useful direction but makes a clumsy voice name, so it's cut.
+ *  "[speaking as a young woman, warm and bright]" → "Young woman" */
+function directionToName(direction: string): string {
+  const inner = direction.trim().replace(/^\[/, "").replace(/\]$/, "").trim();
+  if (!inner) return "Variant";
+  if (/^narrat/i.test(inner)) return "Narrator";
+  const head = inner.replace(/^speaking\s+as\s+(a|an)\s+/i, "").split(",")[0].trim();
+  return head.charAt(0).toUpperCase() + head.slice(1);
+}
 
 const INITIAL: Variant[] = [
   newVariant("[narrating neutrally]", "natural"),
@@ -67,7 +98,7 @@ const INITIAL: Variant[] = [
 ];
 
 export default function VoiceVariantsPage() {
-  const { apiKey, voices } = useStore();
+  const { apiKey, voices, setVoices } = useStore();
 
   const [voiceId, setVoiceId] = useState("");
   const [text, setText] = useState(DEFAULT_LINE);
@@ -136,6 +167,60 @@ export default function VoiceVariantsPage() {
     }
   }
 
+  // Promote a variant into a real, permanent voice.
+  //
+  // Renders CLONE_CLIPS distinct lines with this row's direction applied, then
+  // clones one voice from that set. Because the character is present in every
+  // source clip, IVC bakes it into the new voice's NEUTRAL delivery — the saved
+  // voice needs no tag afterwards, and works anywhere in the app.
+  //
+  // Unlike everything else on this page, this DOES create an account-level
+  // voice and consume a voice slot.
+  async function saveAsVoice(v: Variant) {
+    const name = v.saveName.trim();
+    if (!name) {
+      patch(v.id, { saveError: "Name the voice first." });
+      return;
+    }
+    if (!voiceId || !v.direction.trim()) {
+      patch(v.id, { saveError: "Need a voice and a direction tag." });
+      return;
+    }
+    patch(v.id, { saving: true, saveError: null, savedVoiceId: null });
+    // Snapshot the request inputs so mid-flight edits can't change them.
+    const direction = v.direction;
+    const stability = v.saveConsistent ? stabilityValue("natural") : stabilityValue(v.stability);
+    try {
+      const files = await Promise.all(
+        Array.from({ length: CLONE_CLIPS }, async (_, i) => {
+          const blob = await textToDialogue(apiKey, {
+            inputs: [{ voice_id: voiceId, text: composeLine(direction, SAMPLE_LINES[i % SAMPLE_LINES.length]) }],
+            modelId: MODEL,
+            outputFormat: "mp3_44100_128",
+            settings: { stability, similarity_boost: 0.75, style: 0, use_speaker_boost: true },
+          });
+          return new File([blob], `clip${i}.mp3`, { type: "audio/mpeg" });
+        }),
+      );
+      const { voice_id } = await voiceCloneAdd(apiKey, {
+        name,
+        files,
+        description: `Character variant of ${voiceName || voiceId}: ${direction}`,
+        labels: { variant: "true", source_voice: voiceName || voiceId },
+      });
+      patch(v.id, { saving: false, savedVoiceId: voice_id, saveOpen: false });
+      // Refresh the store so the new voice appears in every selector app-wide.
+      try {
+        const { voices: fresh } = await listVoices(apiKey);
+        setVoices(fresh);
+      } catch {
+        /* the voice exists regardless; the list just refreshes on next load */
+      }
+    } catch (e) {
+      patch(v.id, { saving: false, saveError: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
   const renderAll = async () => {
     if (!ready) {
       setTopError(!voiceId ? "Pick a voice first." : "Enter a line to render.");
@@ -164,6 +249,11 @@ export default function VoiceVariantsPage() {
         male narrator will read as that narrator doing a child, not as a child. Tags are natural-language instructions,
         not a fixed list, so edit them freely. <strong className="text-text">Robust</strong> stability will visibly
         flatten the effect; <strong className="text-text">Creative</strong> sells it hardest.
+        <br />
+        <br />
+        Auditioning is free of side effects — your source voice is only ever read, never modified. The one exception is{" "}
+        <strong className="text-text">Save as voice</strong>, which clones a variant into a new permanent voice in your
+        account.
       </div>
 
       {/* Shared inputs */}
@@ -309,6 +399,102 @@ export default function VoiceVariantsPage() {
               <div className="mt-2">
                 <AudioPlayer blob={v.audio} filename={`variant-${i + 1}-${Date.now()}.mp3`} />
               </div>
+
+              {/* Save as voice — only once you've actually heard this variant. */}
+              {v.audio && !v.savedVoiceId && !v.saveOpen && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <Button
+                    variant="outline"
+                    className="text-xs"
+                    onClick={() =>
+                      patch(v.id, {
+                        saveOpen: true,
+                        saveError: null,
+                        saveName: v.saveName || `${voiceName || "Voice"} — ${directionToName(v.direction)}`,
+                      })
+                    }
+                  >
+                    ⭑ Save as voice
+                  </Button>
+                </div>
+              )}
+
+              {v.saveOpen && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <div className="text-xs font-semibold mb-2">Save as a new voice</div>
+                  <Label>Voice name</Label>
+                  <Input
+                    value={v.saveName}
+                    onChange={(e) => patch(v.id, { saveName: e.target.value })}
+                    placeholder="Jon — Young woman"
+                  />
+
+                  <div className="mt-2 space-y-1">
+                    <label className="flex items-start gap-2 text-xs">
+                      <input
+                        type="radio"
+                        checked={v.saveConsistent}
+                        onChange={() => patch(v.id, { saveConsistent: true })}
+                        className="mt-0.5 accent-accent"
+                      />
+                      <span>
+                        <strong>Consistent</strong> — render clips at Natural
+                        <span className="text-muted"> · less clip-to-clip variance, cleaner clone</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 text-xs">
+                      <input
+                        type="radio"
+                        checked={!v.saveConsistent}
+                        onChange={() => patch(v.id, { saveConsistent: false })}
+                        className="mt-0.5 accent-accent"
+                      />
+                      <span>
+                        <strong>As auditioned</strong> — render clips at {mode.label}
+                        <span className="text-muted"> · matches what you just heard</span>
+                      </span>
+                    </label>
+                  </div>
+
+                  <p className="text-[11px] text-muted mt-2">
+                    Renders {CLONE_CLIPS} clips in this character, then clones them into a new voice. This
+                    <strong className="text-text"> creates a permanent voice</strong> in your account and uses a voice
+                    slot — delete it from the Voice Cloning page. Cloned from generated audio, so expect some drift
+                    from the original.
+                  </p>
+
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button onClick={() => saveAsVoice(v)} disabled={v.saving} className="text-xs">
+                      {v.saving ? <Spinner size={12} /> : `Create voice (${CLONE_CLIPS} clips + 1 clone)`}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="text-xs"
+                      onClick={() => patch(v.id, { saveOpen: false, saveError: null })}
+                      disabled={v.saving}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                  <div className="mt-2">
+                    <ErrorBox msg={v.saveError} />
+                  </div>
+                </div>
+              )}
+
+              {v.savedVoiceId && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <div className="bg-success/10 border border-success/30 rounded p-2.5">
+                    <div className="text-xs font-medium text-success mb-1">Saved as a voice</div>
+                    <div className="text-[11px] font-mono truncate" title={v.savedVoiceId}>
+                      {v.savedVoiceId}
+                    </div>
+                    <div className="text-[11px] text-muted mt-1">
+                      Now in your voice list — use it anywhere, no direction tag needed.
+                    </div>
+                  </div>
+                </div>
+              )}
             </Card>
           );
         })}

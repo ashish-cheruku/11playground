@@ -19,27 +19,11 @@ import { useStore } from "@/lib/store";
 import { listVoices, textToDialogue, voiceCloneAdd, voiceDelete } from "@/lib/api";
 import { allocateClips, allocateSeconds, clipBudget, MIN_VOICES, MAX_VOICES, TARGET_TOTAL_S } from "@/lib/fusion";
 import { readDuration, trimToMonoWav } from "@/lib/audio";
+import { SAMPLE_LINES } from "@/lib/sampleLines";
 import { Card, Textarea, Button, Input, Label, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { AudioPlayer } from "@/components/AudioPlayer";
 
-// Distinct, phonetically varied lines → richer clone samples than one repeated
-// sentence. One line per clip; the blend decides how many clips per parent.
-// Twelve lines = the max clip budget, so clips stay distinct even at full count.
-const SAMPLE_LINES = [
-  "The quiet harbor held its breath as the last ferry slipped past the breakwater.",
-  "She counted the seconds between the lightning and the low roll of thunder.",
-  "Numbers, names, and small betrayals — he remembered every single one of them.",
-  "Coffee, rain, and the smell of old paper filled the narrow little bookshop.",
-  "We were never going to agree, but we kept talking anyway, softly, into the night.",
-  "Zip the bag, check the map, and don't look back until we reach the ridge at dawn.",
-  "The old clock in the hallway chimed once, then fell silent for the rest of the evening.",
-  "He traced the coastline on the map with one finger, from the cape down to the delta.",
-  "A gull wheeled over the pier while the fishermen hauled their nets in the grey light.",
-  "Question everything, she wrote, then underlined the word twice and closed the book.",
-  "The engine coughed, caught, and settled into a low steady hum against the cold.",
-  "Bright, brittle, and beautiful — the frost stitched the whole field white by morning.",
-];
 // Same line rendered by the fusion and (in library mode) each parent.
 const COMPARE_LINE =
   "Here's how I sound — listen to the warmth, the timbre, and the pace of my delivery.";
